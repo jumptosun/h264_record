@@ -37,14 +37,18 @@ int H264Record::uninit()
 
 int H264Record::write_data(uint8_t* data, int len)
 {
-
     if (data == NULL || len < 0)
         return -1;
 
     // find sps
-    if (!formatCtx_ && fill_extradata(data, len) == 0) {
-        create(extraData_.bytes(), extraData_.len());
+    if (!formatCtx_) {
+        if (fill_extradata(data, len) == 0) {
+            create(extraData_.bytes(), extraData_.len());
+        }
     }
+
+    if (!formatCtx_)
+        return 0;
 
     H264Reader reader(data, len);
     uint8_t* nalus;
@@ -88,10 +92,8 @@ void H264Record::write_video_frame(uint8_t* p, int len)
     av_init_packet(&pkt);
     pkt.stream_index = vSt->index;
 
-    pkt.data = (uint8_t*)av_malloc(len);
+    pkt.data = p;
     pkt.size = len;
-
-    memcpy(pkt.data, p, len);
 
     // Wait for key frame_count
     pkt.dts = frameCount_ * 90000 / 25;
@@ -155,6 +157,9 @@ FAIL:
 
 void H264Record::finish()
 {
+    if (!formatCtx_)
+        return;
+
     av_interleaved_write_frame(formatCtx_, NULL);
     av_write_trailer(formatCtx_);
     avformat_free_context(formatCtx_);
@@ -162,6 +167,9 @@ void H264Record::finish()
     videoStreamdIndex_ = -1;
     frameCount_ = -1;
     formatCtx_ = NULL;
+
+    accessUnitBuf_.reset();
+    extraData_.reset();
 }
 
 // the AVStream->codecpar->extradata must conform to the following tow step,
